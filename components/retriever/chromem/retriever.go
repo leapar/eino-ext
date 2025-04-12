@@ -18,11 +18,9 @@ type RetrieverConfig struct {
 
 	Collection string `json:"collection"`
 
-	// TopK will be set with 100 if zero
 	TopK           int      `json:"top_k,omitempty"`
 	ScoreThreshold *float64 `json:"score_threshold,omitempty"`
 
-	// Embedding 使用自行指定的 embedding 替换 VikingDB 内置向量化方法
 	Embedding embedding.Embedder
 }
 
@@ -35,7 +33,7 @@ type Retriever struct {
 
 func NewRetriever(ctx context.Context, config *RetrieverConfig) (*Retriever, error) {
 	if config.Embedding == nil {
-		return nil, fmt.Errorf("[NewRetriever] embedding not provided for redis retriever")
+		return nil, fmt.Errorf("[NewRetriever] embedding not provided for chromem retriever")
 	}
 
 	if config.Client == nil {
@@ -141,7 +139,7 @@ func (r *Retriever) customEmbedding(ctx context.Context, query string, options *
 		return nil, err
 	}
 
-	if len(vectors) != 1 { // unexpected
+	if len(vectors) != 1 {
 		return nil, fmt.Errorf("[customEmbedding] invalid return length of vector, got=%d, expected=1", len(vectors))
 	}
 
