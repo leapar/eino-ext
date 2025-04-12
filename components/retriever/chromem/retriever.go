@@ -17,14 +17,10 @@ type RetrieverConfig struct {
 	Client *chromem.DB
 
 	Collection string `json:"collection"`
-	Index      string `json:"index"`
 
 	// TopK will be set with 100 if zero
 	TopK           int      `json:"top_k,omitempty"`
 	ScoreThreshold *float64 `json:"score_threshold,omitempty"`
-
-	// ModelName 指定模型名称
-	ModelName string `json:"model_name"`
 
 	// Embedding 使用自行指定的 embedding 替换 VikingDB 内置向量化方法
 	Embedding embedding.Embedder
@@ -93,7 +89,6 @@ func (r *Retriever) Retrieve(ctx context.Context, query string, opts ...retrieve
 	}()
 
 	options := retriever.GetCommonOptions(&retriever.Options{
-		Index:          &r.config.Index,
 		TopK:           &r.config.TopK,
 		ScoreThreshold: r.config.ScoreThreshold,
 		Embedding:      r.config.Embedding,
