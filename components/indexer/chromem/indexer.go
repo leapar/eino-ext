@@ -10,6 +10,7 @@ import (
 	"github.com/cloudwego/eino/components/embedding"
 	"github.com/cloudwego/eino/components/indexer"
 	"github.com/cloudwego/eino/schema"
+	"github.com/google/uuid"
 	"github.com/philippgille/chromem-go"
 )
 
@@ -61,7 +62,9 @@ func NewIndexer(ctx context.Context, config *IndexerConfig) (*Indexer, error) {
 	}
 
 	i := &Indexer{
-		config: config,
+		config:      config,
+		collections: make(map[string]*chromem.Collection),
+		mu:          sync.RWMutex{},
 	}
 	collection, err := i.getOrCreateCollection(i.config.Collection)
 	if err != nil {
@@ -92,7 +95,7 @@ func (i *Indexer) Store(ctx context.Context, docs []*schema.Document, opts ...in
 		}
 
 		if err = i.collection.AddDocuments(ctx, documents, i.config.AddBatchSize); err != nil {
-			return nil, fmt.Errorf("UpsertData failed: %w", err)
+			return nil, fmt.Errorf("AddDocuments failed: %w", err)
 		}
 
 		ids = append(ids, iter(sub, func(t *schema.Document) string { return t.ID })...)
@@ -118,12 +121,17 @@ func (i *Indexer) convertDocuments(ctx context.Context, docs []*schema.Document,
 		doc := docs[idx]
 		document := chromem.Document{}
 
+		if doc.ID == "" {
+			doc.ID = uuid.New().String()
+		}
+
 		document.ID = doc.ID
 		document.Content = doc.Content
 		document.Embedding = make([]float32, len(dense[idx]))
 		for k, v := range dense[idx] {
 			document.Embedding[k] = float32(v)
 		}
+		document.Metadata = map[string]string{}
 		for k, v := range doc.MetaData {
 			document.Metadata[k] = fmt.Sprintf("%s", v)
 		}

@@ -3,6 +3,7 @@ package chromem
 import (
 	"context"
 	"fmt"
+	"math"
 	"sync"
 
 	"github.com/cloudwego/eino/callbacks"
@@ -18,8 +19,8 @@ type RetrieverConfig struct {
 
 	Collection string `json:"collection"`
 
-	TopK           int      `json:"top_k,omitempty"`
-	ScoreThreshold *float64 `json:"score_threshold,omitempty"`
+	TopK           int     `json:"top_k,omitempty"`
+	ScoreThreshold float64 `json:"score_threshold,omitempty"`
 
 	Embedding embedding.Embedder
 }
@@ -35,17 +36,26 @@ func NewRetriever(ctx context.Context, config *RetrieverConfig) (*Retriever, err
 	if config.Embedding == nil {
 		return nil, fmt.Errorf("[NewRetriever] embedding not provided for chromem retriever")
 	}
-
+	var err error
 	if config.Client == nil {
-		config.Client = chromem.NewDB()
+		config.Client, err = chromem.NewPersistentDB("", true)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get db: %w", err)
+		}
 	}
 
 	if config.TopK == 0 {
 		config.TopK = defaultTopK
 	}
 
+	if len(config.Collection) == 0 {
+		config.Collection = defaultCollection
+	}
+
 	r := &Retriever{
-		config: config,
+		config:      config,
+		collections: make(map[string]*chromem.Collection),
+		mu:          sync.RWMutex{},
 	}
 
 	collection, err := r.getCollection(r.config.Collection)
@@ -88,7 +98,7 @@ func (r *Retriever) Retrieve(ctx context.Context, query string, opts ...retrieve
 
 	options := retriever.GetCommonOptions(&retriever.Options{
 		TopK:           &r.config.TopK,
-		ScoreThreshold: r.config.ScoreThreshold,
+		ScoreThreshold: &r.config.ScoreThreshold,
 		Embedding:      r.config.Embedding,
 	}, opts...)
 
@@ -108,16 +118,18 @@ func (r *Retriever) Retrieve(ctx context.Context, query string, opts ...retrieve
 		queryEmbedding[k] = float32(v)
 	}
 
-	result, err := r.collection.QueryEmbedding(ctx, queryEmbedding, *options.TopK, nil, nil)
+	result, err := r.collection.QueryEmbedding(ctx, queryEmbedding, int(math.Min(float64(r.collection.Count()), float64(*options.TopK))), nil, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	docs = make([]*schema.Document, 0, len(result))
 	for _, data := range result {
-		if options.ScoreThreshold != nil && float64(data.Similarity) < *options.ScoreThreshold {
+		if options.ScoreThreshold != nil && *options.ScoreThreshold > 0 && float64(data.Similarity) < *options.ScoreThreshold {
 			continue
 		}
+
+		//fmt.Println(data.Similarity, data.Content)
 
 		doc, err := r.data2Document(data)
 		if err != nil {

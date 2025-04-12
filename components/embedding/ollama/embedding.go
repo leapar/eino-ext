@@ -68,6 +68,10 @@ func NewEmbedder(ctx context.Context, config *EmbeddingConfig) (*Embedder, error
 		config.Timeout = &defaultTimeout
 	}
 
+	if len(config.Model) == 0 {
+		config.Model = "nomic-embed-text:latest"
+	}
+
 	if config.HTTPClient != nil {
 		httpClient = config.HTTPClient
 	} else {

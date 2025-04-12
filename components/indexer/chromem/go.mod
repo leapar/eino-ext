@@ -6,6 +6,7 @@ toolchain go1.24.2
 
 require (
 	github.com/cloudwego/eino v0.3.20
+	github.com/google/uuid v1.6.0
 	github.com/philippgille/chromem-go v0.7.0
 )
 
