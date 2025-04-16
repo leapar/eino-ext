@@ -20,7 +20,7 @@ import (
 	"context"
 	"log"
 
-	"ollama"
+	"github.com/cloudwego/eino-ext/components/embedding/ollama"
 )
 
 func main() {
