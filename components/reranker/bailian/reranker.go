@@ -22,8 +22,6 @@ type ReRanker struct {
 type ReRankerConfig struct {
 	Model           string //模型
 	ReturnDocuments bool   //是否返回documents
-	TopK            int    //top_n
-	ScoreThreshold  float64
 	ApiKey          string //平台ApiKey
 }
 
@@ -31,14 +29,8 @@ func NewReRanker(ctx context.Context, opt *ReRankerConfig) (*ReRanker, error) {
 	config := &ReRankerConfig{
 		Model:           "gte-rerank",
 		ReturnDocuments: false,
-		TopK:            5,
-		ScoreThreshold:  0.7,
 	}
 	if opt != nil {
-		if opt.TopK > 0 {
-			config.TopK = opt.TopK
-		}
-		config.ScoreThreshold = opt.ScoreThreshold
 		config.ReturnDocuments = opt.ReturnDocuments
 		config.Model = opt.Model
 		config.ApiKey = opt.ApiKey
@@ -61,7 +53,7 @@ func (impl *ReRanker) ReRankDocuments(ctx context.Context, src []*schema.Documen
 		},
 		Parameters: &RequestConfigParams{
 			ReturnDocuments: impl.config.ReturnDocuments,
-			TopK:            impl.config.TopK,
+			TopK:            len(src),
 		},
 	}
 	for _, v := range src {

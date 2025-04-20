@@ -94,6 +94,10 @@ func (i *Indexer) Store(ctx context.Context, docs []*schema.Document, opts ...in
 			return nil, fmt.Errorf("convertDocuments failed: %w", err)
 		}
 
+		//这个地方可以把content存入mysql获取MysqlDocId
+		//然后从content内容改为MysqlDocId
+		//同时metadata里面添加isStoredInMysql=true
+		//MetaData里面已经包含了_source就是原始文件名
 		if err = i.collection.AddDocuments(ctx, documents, i.config.AddBatchSize); err != nil {
 			return nil, fmt.Errorf("AddDocuments failed: %w", err)
 		}
