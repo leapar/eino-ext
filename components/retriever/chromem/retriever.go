@@ -9,6 +9,7 @@ import (
 	"github.com/cloudwego/eino/callbacks"
 	"github.com/cloudwego/eino/components"
 	"github.com/cloudwego/eino/components/embedding"
+	"github.com/cloudwego/eino/components/reranker"
 	"github.com/cloudwego/eino/components/retriever"
 	"github.com/cloudwego/eino/schema"
 	"github.com/philippgille/chromem-go"
@@ -23,6 +24,7 @@ type RetrieverConfig struct {
 	ScoreThreshold float64 `json:"score_threshold,omitempty"`
 
 	Embedding embedding.Embedder
+	ReRanker  reranker.ReRanker
 }
 
 type Retriever struct {
@@ -123,20 +125,38 @@ func (r *Retriever) Retrieve(ctx context.Context, query string, opts ...retrieve
 		return nil, err
 	}
 
-	docs = make([]*schema.Document, 0, len(result))
+	docs = make([]*schema.Document, 0)
 	for _, data := range result {
-		if options.ScoreThreshold != nil && *options.ScoreThreshold > 0 && float64(data.Similarity) < *options.ScoreThreshold {
-			continue
-		}
-
-		//fmt.Println(data.Similarity, data.Content)
-
 		doc, err := r.data2Document(data)
 		if err != nil {
 			return nil, err
 		}
 
 		docs = append(docs, doc)
+	}
+
+	filterDocs := make([]*schema.Document, 0)
+
+	//排序
+	if r.config.ReRanker != nil {
+		docs, err = r.config.ReRanker.ReRankDocuments(ctx, docs, query)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	//过滤
+	if options.ScoreThreshold != nil {
+		scoreThreshold := *options.ScoreThreshold
+		for i := 0; i < len(docs); i++ {
+			doc := docs[i]
+			if scoreThreshold > 0 && float64(doc.Score()) < scoreThreshold {
+				continue
+			}
+			filterDocs = append(filterDocs, doc)
+		}
+
+		docs = filterDocs
 	}
 
 	ctx = callbacks.OnEnd(ctx, &retriever.CallbackOutput{Docs: docs})

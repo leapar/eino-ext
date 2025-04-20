@@ -1,11 +1,9 @@
 module github.com/cloudwego/eino-ext/components/retriever/chromem
 
-go 1.21
-
-toolchain go1.24.2
+go 1.24.2
 
 require (
-	github.com/cloudwego/eino v0.3.20
+	github.com/cloudwego/eino v0.3.25
 	github.com/philippgille/chromem-go v0.7.0
 )
 
@@ -45,3 +43,5 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/cloudwego/eino => D:\gocodes\ai\szp-eino
