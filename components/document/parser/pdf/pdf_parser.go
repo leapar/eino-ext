@@ -40,7 +40,7 @@ type PDFParser struct {
 }
 
 // NewPDFParser creates a new PDF parser.
-func NewPDFParser(ctx context.Context, config *Config) (*PDFParser, error) {
+func NewPDFParser(config *Config) (*PDFParser, error) {
 	if config == nil {
 		config = &Config{}
 	}
