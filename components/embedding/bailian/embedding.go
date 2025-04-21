@@ -2,6 +2,26 @@
 3dman.cn
 
 百炼多模态向量 https://bailian.console.aliyun.com/?tab=api#/api/?type=model&url=https%3A%2F%2Fhelp.aliyun.com%2Fdocument_detail%2F2712517.html
+
+其实还可以通过gocv  resnet来提取图片向量
+
+```go
+
+// Read the network using the ResNet50 ONNX model
+net := gocv.ReadNetFromONNX("resnet50-v1-7.onnx")
+// Set preferable backend and target to CPU
+err := net.SetPreferableBackend(gocv.NetBackendDefault)
+net.SetPreferableTarget(gocv.NetTargetCPU)
+
+embeddingMat := net.Forward("resnetv17_dense0_fwd")
+
+// Extract the data as a float32 slice
+embedding, err := embeddingMat.DataPtrFloat32()
+
+```
+// 如果为了图片向量准确度还可以调用云图片识别的api，把图片识别出来的label标签也加入到向量中
+// 例如提取到了桌子、凳子、瓷器
+// 向量后面再拼接3个1.0浮点数
 */
 
 package bailian
