@@ -32,7 +32,7 @@ func TestLoader_Load(t *testing.T) {
 		f, err := os.Open("./testdata/test_pdf.pdf")
 		assert.NoError(t, err)
 
-		p, err := NewPDFParser(nil)
+		p, err := NewPDFParser(ctx, nil)
 		assert.NoError(t, err)
 
 		docs, err := p.Parse(ctx, f, WithToPages(true), parser.WithExtraMeta(map[string]any{"test": "test"}))
