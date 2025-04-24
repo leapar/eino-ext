@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/cloudwego/eino/callbacks"
+	"github.com/cloudwego/eino/components"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 	"github.com/cohesion-org/deepseek-go"
@@ -105,9 +106,15 @@ type ChatModelConfig struct {
 	// Range: [-2.0, 2.0]. Positive values decrease likelihood of repetition
 	// Optional. Default: 0
 	FrequencyPenalty float32 `json:"frequency_penalty,omitempty"`
+
+	// LogProbs specifies whether to return log probabilities of the output tokens.
+	LogProbs bool `json:"log_probs"`
+
+	// TopLogProbs specifies the number of most likely tokens to return at each token position, each with an associated log probability.
+	TopLogProbs int `json:"top_log_probs"`
 }
 
-var _ model.ChatModel = (*ChatModel)(nil)
+var _ model.ToolCallingChatModel = (*ChatModel)(nil)
 
 type ChatModel struct {
 	cli  *deepseek.Client
@@ -146,16 +153,58 @@ func NewChatModel(_ context.Context, config *ChatModelConfig) (*ChatModel, error
 	return &ChatModel{cli: cli, conf: config}, nil
 }
 
+func toLogProbs(probs *deepseek.Logprobs) *schema.LogProbs {
+	if probs == nil {
+		return nil
+	}
+	ret := &schema.LogProbs{}
+	for _, content := range probs.Content {
+		schemaContent := schema.LogProb{
+			Token:       content.Token,
+			LogProb:     content.Logprob,
+			Bytes:       intSlice2int64(content.Bytes),
+			TopLogProbs: toTopLogProb(content.TopLogprobs),
+		}
+		ret.Content = append(ret.Content, schemaContent)
+	}
+	return ret
+}
+
+func toTopLogProb(probs []deepseek.TopLogprobToken) []schema.TopLogProb {
+	ret := make([]schema.TopLogProb, 0, len(probs))
+	for _, prob := range probs {
+		ret = append(ret, schema.TopLogProb{
+			Token:   prob.Token,
+			LogProb: prob.Logprob,
+			Bytes:   intSlice2int64(prob.Bytes),
+		})
+	}
+	return ret
+}
+
+func intSlice2int64(in []int) []int64 {
+	ret := make([]int64, 0, len(in))
+	for _, v := range in {
+		ret = append(ret, int64(v))
+	}
+	return ret
+}
+
 func (cm *ChatModel) Generate(ctx context.Context, in []*schema.Message, opts ...model.Option) (outMsg *schema.Message, err error) {
+
+	ctx = callbacks.EnsureRunInfo(ctx, cm.GetType(), components.ComponentOfChatModel)
+
+	req, cbInput, err := cm.generateRequest(ctx, in, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate request: %w", err)
+	}
+
+	ctx = callbacks.OnStart(ctx, cbInput)
 	defer func() {
 		if err != nil {
 			callbacks.OnError(ctx, err)
 		}
 	}()
-
-	req, cbInput, err := cm.generateRequest(ctx, in, opts...)
-
-	ctx = callbacks.OnStart(ctx, cbInput)
 
 	resp, err := cm.cli.CreateChatCompletion(ctx, req)
 	if err != nil {
@@ -178,6 +227,7 @@ func (cm *ChatModel) Generate(ctx context.Context, in []*schema.Message, opts ..
 			ResponseMeta: &schema.ResponseMeta{
 				FinishReason: choice.FinishReason,
 				Usage:        toEinoTokenUsage(&resp.Usage),
+				LogProbs:     toLogProbs(choice.Logprobs),
 			},
 		}
 		if len(choice.Message.ReasoningContent) > 0 {
@@ -201,14 +251,20 @@ func (cm *ChatModel) Generate(ctx context.Context, in []*schema.Message, opts ..
 }
 
 func (cm *ChatModel) Stream(ctx context.Context, in []*schema.Message, opts ...model.Option) (outStream *schema.StreamReader[*schema.Message], err error) {
+
+	ctx = callbacks.EnsureRunInfo(ctx, cm.GetType(), components.ComponentOfChatModel)
+
+	req, cbInput, err := cm.generateStreamRequest(ctx, in, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate stream request: %w", err)
+	}
+
+	ctx = callbacks.OnStart(ctx, cbInput)
 	defer func() {
 		if err != nil {
 			callbacks.OnError(ctx, err)
 		}
 	}()
-	req, cbInput, err := cm.generateStreamRequest(ctx, in, opts...)
-
-	ctx = callbacks.OnStart(ctx, cbInput)
 
 	stream, err := cm.cli.CreateChatCompletionStream(ctx, req)
 	if err != nil {
@@ -477,6 +533,8 @@ func (cm *ChatModel) generateRequest(_ context.Context, in []*schema.Message, op
 		Stop:             cm.conf.Stop,
 		PresencePenalty:  cm.conf.PresencePenalty,
 		FrequencyPenalty: cm.conf.FrequencyPenalty,
+		LogProbs:         cm.conf.LogProbs,
+		TopLogProbs:      cm.conf.TopLogProbs,
 	}
 
 	cbInput := &model.CallbackInput{
@@ -603,6 +661,27 @@ func toDeepSeekMessage(m *schema.Message) (*deepseek.ChatCompletionMessage, erro
 			ret.ReasoningContent = reasoning
 		}
 	}
+	if ret.Role == roleTool && m.ToolCallID != "" {
+		ret.ToolCallID = m.ToolCallID
+	}
+	if ret.Role == roleAssistant && len(m.ToolCalls) > 0 {
+		ret.ToolCalls = make([]deepseek.ToolCall, len(m.ToolCalls))
+		for i, call := range m.ToolCalls {
+			var index int
+			if call.Index != nil {
+				index = *call.Index
+			}
+			ret.ToolCalls[i] = deepseek.ToolCall{
+				Index: index,
+				ID:    call.ID,
+				Type:  call.Type,
+				Function: deepseek.ToolCallFunction{
+					Name:      call.Function.Name,
+					Arguments: call.Function.Arguments,
+				},
+			}
+		}
+	}
 	return ret, nil
 }
 
@@ -660,6 +739,7 @@ func resolveStreamResponse(resp *deepseek.StreamChatCompletionResponse) (msg *sc
 			ResponseMeta: &schema.ResponseMeta{
 				FinishReason: choice.FinishReason,
 				Usage:        streamToEinoTokenUsage(resp.Usage),
+				LogProbs:     toLogProbs(&choice.Logprobs),
 			},
 		}
 		if len(choice.Delta.ReasoningContent) > 0 {
