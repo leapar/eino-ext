@@ -35,4 +35,3 @@ output/*
 # Vscode files
 .vscode
 
-security.const.go
