@@ -92,33 +92,31 @@ func (m *toolHelper) InvokableRun(ctx context.Context, argumentsInJSON string, o
 	arg := make(map[string]any)
 	err := sonic.Unmarshal([]byte(argumentsInJSON), &arg)
 	if err != nil {
-		return "", fmt.Errorf("unmarshal input fail: %w", err)
+		return "", fmt.Errorf("failed to unmarshal mcp tool input to map[string]any, input: %s, error: %w", argumentsInJSON, err)
 	}
 	result, err := m.cli.CallTool(ctx, mcp.CallToolRequest{
 		Request: mcp.Request{
 			Method: "tools/call",
 		},
 		Params: struct {
-			Name      string                 `json:"name"`
-			Arguments map[string]interface{} `json:"arguments,omitempty"`
-			Meta      *struct {
-				ProgressToken mcp.ProgressToken `json:"progressToken,omitempty"`
-			} `json:"_meta,omitempty"`
+			Name      string    `json:"name"`
+			Arguments any       `json:"arguments,omitempty"`
+			Meta      *mcp.Meta `json:"_meta,omitempty"`
 		}{
 			Name:      m.info.Name,
 			Arguments: arg,
 		},
 	})
 	if err != nil {
-		return "", fmt.Errorf("call mcp tool fail: %w", err)
+		return "", fmt.Errorf("failed to call mcp tool: %w", err)
 	}
 
 	marshaledResult, err := sonic.MarshalString(result)
 	if err != nil {
-		return "", fmt.Errorf("marshal mcp tool result fail: %w", err)
+		return "", fmt.Errorf("failed to marshal mcp tool result: %w", err)
 	}
 	if result.IsError {
-		return "", fmt.Errorf("call mcp tool fail: %s", marshaledResult)
+		return "", fmt.Errorf("failed to call mcp tool, mcp server return error: %s", marshaledResult)
 	}
 	return marshaledResult, nil
 }
