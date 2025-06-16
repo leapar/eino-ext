@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 CloudWeGo Authors
+ * Copyright 2024 CloudWeGo Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,14 +14,23 @@
  * limitations under the License.
  */
 
-package consts
+package redis
 
-const (
-	EinoImportPath = "github.com/cloudwego/eino"
-)
+import "github.com/bytedance/sonic"
 
-const (
-	CozeLoopAggrMessageOutput = "cozeloop_aggr_message_output"
-	CozeLoopGraphNodeLevel    = "cozeloop_graph_node_level"
-	CozeLoopToolIDNameMap     = "cozeloop_tool_id_name_map"
-)
+var defaultCodec codec = &sonicCodec{}
+
+type codec interface {
+	Marshal(v any) ([]byte, error)
+	Unmarshal(data []byte, v any) error
+}
+
+type sonicCodec struct{}
+
+func (*sonicCodec) Marshal(v any) ([]byte, error) {
+	return sonic.Marshal(v)
+}
+
+func (*sonicCodec) Unmarshal(data []byte, v any) error {
+	return sonic.Unmarshal(data, v)
+}

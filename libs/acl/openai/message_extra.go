@@ -14,28 +14,34 @@
  * limitations under the License.
  */
 
-package main
+package openai
 
 import (
-	"context"
-
-	ccb "github.com/cloudwego/eino-ext/callbacks/cozeloop"
-	"github.com/cloudwego/eino/callbacks"
-	"github.com/coze-dev/cozeloop-go"
+	"github.com/cloudwego/eino/schema"
 )
 
-func main() {
-	// Set the following environment variables first (Assuming you are using a PAT token.).
-	// COZELOOP_WORKSPACE_ID=your workspace id
-	// COZELOOP_API_TOKEN=your token
+const (
+	keyOfReasoningContent = "reasoning-content"
+)
 
-	ctx := context.Background()
-	client, err := cozeloop.NewClient()
-	if err != nil {
-		panic(err)
+func GetReasoningContent(msg *schema.Message) (string, bool) {
+	if msg == nil {
+		return "", false
 	}
-	defer client.Close(ctx)
-	// Call once during service initialization
-	handler := ccb.NewLoopHandler(client)
-	callbacks.AppendGlobalHandlers(handler)
+	reasoningContent, ok := msg.Extra[keyOfReasoningContent].(string)
+	if !ok {
+		return "", false
+	}
+
+	return reasoningContent, true
+}
+
+func setReasoningContent(msg *schema.Message, reasoningContent string) {
+	if msg == nil {
+		return
+	}
+	if msg.Extra == nil {
+		msg.Extra = make(map[string]interface{})
+	}
+	msg.Extra[keyOfReasoningContent] = reasoningContent
 }

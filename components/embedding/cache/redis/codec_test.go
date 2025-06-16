@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 CloudWeGo Authors
+ * Copyright 2024 CloudWeGo Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,14 +14,31 @@
  * limitations under the License.
  */
 
-package consts
+package redis
 
-const (
-	EinoImportPath = "github.com/cloudwego/eino"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-const (
-	CozeLoopAggrMessageOutput = "cozeloop_aggr_message_output"
-	CozeLoopGraphNodeLevel    = "cozeloop_graph_node_level"
-	CozeLoopToolIDNameMap     = "cozeloop_tool_id_name_map"
-)
+func TestCodec_Sonic(t *testing.T) {
+	c := &sonicCodec{}
+	v := []float64{
+		1.0, 2.0, 3.0,
+	}
+
+	data, err := c.Marshal(v)
+	require.NoError(t, err)
+	assert.NotEmpty(t, data)
+
+	var out []float64
+	err = c.Unmarshal(data, &out)
+	require.NoError(t, err)
+	assert.Equal(t, v, out)
+}
+
+func TestCodec_Default(t *testing.T) {
+	assert.Equal(t, &sonicCodec{}, defaultCodec)
+}

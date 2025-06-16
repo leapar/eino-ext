@@ -137,7 +137,8 @@ type ChatModelConfig struct {
 }
 
 type ResponseFormat struct {
-	Type model.ResponseFormatType `json:"type"`
+	Type       model.ResponseFormatType                       `json:"type"`
+	JSONSchema *model.ResponseFormatJSONSchemaJSONSchemaParam `json:"json_schema,omitempty"`
 }
 
 func buildClient(config *ChatModelConfig) *arkruntime.Client {
@@ -264,9 +265,12 @@ func (cm *ChatModel) Generate(ctx context.Context, in []*schema.Message, opts ..
 		Tools:       nil,
 	}, opts...)
 
-	arkOpts := fmodel.GetImplSpecificOptions(&arkOptions{customHeaders: cm.config.CustomHeader}, opts...)
+	arkOpts := fmodel.GetImplSpecificOptions(&arkOptions{
+		customHeaders: cm.config.CustomHeader,
+		thinking:      cm.config.Thinking,
+	}, opts...)
 
-	req, err := cm.genRequest(in, options)
+	req, err := cm.genRequest(in, options, arkOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -334,9 +338,12 @@ func (cm *ChatModel) Stream(ctx context.Context, in []*schema.Message, opts ...f
 		Tools:       nil,
 	}, opts...)
 
-	arkOpts := fmodel.GetImplSpecificOptions(&arkOptions{customHeaders: cm.config.CustomHeader}, opts...)
+	arkOpts := fmodel.GetImplSpecificOptions(&arkOptions{
+		customHeaders: cm.config.CustomHeader,
+		thinking:      cm.config.Thinking,
+	}, opts...)
 
-	req, err := cm.genRequest(in, options)
+	req, err := cm.genRequest(in, options, arkOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -442,7 +449,7 @@ func (cm *ChatModel) Stream(ctx context.Context, in []*schema.Message, opts ...f
 	return outStream, nil
 }
 
-func (cm *ChatModel) genRequest(in []*schema.Message, options *fmodel.Options) (req *model.CreateChatCompletionRequest, err error) {
+func (cm *ChatModel) genRequest(in []*schema.Message, options *fmodel.Options, arkOpts *arkOptions) (req *model.CreateChatCompletionRequest, err error) {
 	req = &model.CreateChatCompletionRequest{
 		MaxTokens:        options.MaxTokens,
 		Temperature:      options.Temperature,
@@ -452,12 +459,13 @@ func (cm *ChatModel) genRequest(in []*schema.Message, options *fmodel.Options) (
 		FrequencyPenalty: cm.config.FrequencyPenalty,
 		LogitBias:        cm.config.LogitBias,
 		PresencePenalty:  cm.config.PresencePenalty,
-		Thinking:         cm.config.Thinking,
+		Thinking:         arkOpts.thinking,
 	}
 
 	if cm.config.ResponseFormat != nil {
 		req.ResponseFormat = &model.ResponseFormat{
-			Type: cm.config.ResponseFormat.Type,
+			Type:       cm.config.ResponseFormat.Type,
+			JSONSchema: cm.config.ResponseFormat.JSONSchema,
 		}
 	}
 
@@ -582,17 +590,18 @@ func (cm *ChatModel) resolveChatResponse(resp model.ChatCompletionResponse) (msg
 			Usage:        toEinoTokenUsage(&resp.Usage),
 			LogProbs:     toLogProbs(choice.LogProbs),
 		},
-		Extra: map[string]any{
-			keyOfRequestID: arkRequestID(resp.ID),
-		},
+		Extra: map[string]any{},
 	}
+
+	setModelName(msg, resp.Model)
+	setArkRequestID(msg, resp.ID)
 
 	if content != nil && content.StringValue != nil {
 		msg.Content = *content.StringValue
 	}
 
 	if choice.Message.ReasoningContent != nil {
-		msg.Extra[keyOfReasoningContent] = *choice.Message.ReasoningContent
+		setReasoningContent(msg, *choice.Message.ReasoningContent)
 	}
 
 	return msg, nil
@@ -616,13 +625,11 @@ func resolveStreamResponse(resp model.ChatCompletionStreamResponse) (msg *schema
 					Usage:        toEinoTokenUsage(resp.Usage),
 					LogProbs:     toLogProbs(choice.LogProbs),
 				},
-				Extra: map[string]any{
-					keyOfRequestID: arkRequestID(resp.ID),
-				},
+				Extra: map[string]any{},
 			}
 
 			if choice.Delta.ReasoningContent != nil {
-				msg.Extra[keyOfReasoningContent] = *choice.Delta.ReasoningContent
+				setReasoningContent(msg, *choice.Delta.ReasoningContent)
 			}
 
 			break
@@ -635,11 +642,11 @@ func resolveStreamResponse(resp model.ChatCompletionStreamResponse) (msg *schema
 			ResponseMeta: &schema.ResponseMeta{
 				Usage: toEinoTokenUsage(resp.Usage),
 			},
-			Extra: map[string]any{
-				keyOfRequestID: arkRequestID(resp.ID),
-			},
+			Extra: map[string]any{},
 		}
 	}
+	setArkRequestID(msg, resp.ID)
+	setModelName(msg, resp.Model)
 
 	return msg, msgFound, nil
 }
