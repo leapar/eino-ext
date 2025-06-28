@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	ApiURL = "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank"
+// ApiURL = "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank"
 )
 
 type ReRanker struct {
@@ -23,6 +23,7 @@ type ReRankerConfig struct {
 	Model           string //模型
 	ReturnDocuments bool   //是否返回documents
 	ApiKey          string //平台ApiKey
+	ApiURL          string
 }
 
 func NewReRanker(ctx context.Context, opt *ReRankerConfig) (*ReRanker, error) {
@@ -34,6 +35,7 @@ func NewReRanker(ctx context.Context, opt *ReRankerConfig) (*ReRanker, error) {
 		config.ReturnDocuments = opt.ReturnDocuments
 		config.Model = opt.Model
 		config.ApiKey = opt.ApiKey
+		config.ApiURL = opt.ApiURL
 	}
 	reRanker := &ReRanker{config: config}
 	return reRanker, nil
@@ -47,6 +49,7 @@ func (impl *ReRanker) ReRankDocuments(ctx context.Context, src []*schema.Documen
 	config := &RequestConfig{
 		Model:  impl.config.Model,
 		ApiKey: impl.config.ApiKey,
+		ApiUrl: impl.config.ApiURL,
 		Input: &RequestConfigInput{
 			Query:     query,
 			Documents: make([]string, 0),
@@ -89,6 +92,7 @@ type RequestConfig struct {
 	ApiKey     string               `json:"-"`
 	Input      *RequestConfigInput  `json:"input"`
 	Parameters *RequestConfigParams `json:"parameters"`
+	ApiUrl     string               `json:"apiUrl"`
 }
 
 // 接口返回数据
@@ -121,7 +125,7 @@ func doAliRerank(config *RequestConfig) (*ReposeData, error) {
 	if param != nil {
 		jsonData = bytes.NewReader(param)
 	}
-	req, err := http.NewRequest("POST", ApiURL, jsonData)
+	req, err := http.NewRequest("POST", config.ApiUrl, jsonData)
 	if err != nil {
 		err = fmt.Errorf("网络故障")
 		return nil, err
