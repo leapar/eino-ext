@@ -74,6 +74,12 @@ type Config struct {
 	// Required for Azure
 	ByAzure bool `json:"by_azure"`
 
+
+	// AzureModelMapperFunc is used to map the model name to the deployment name for Azure OpenAI Service.
+	// This is useful when the model name is different from the deployment name.
+	// Optional for Azure, remove [,:] from the model name by default.
+	AzureModelMapperFunc func(model string) string
+
 	// BaseURL is the Azure OpenAI endpoint URL
 	// Format: https://{YOUR_RESOURCE_NAME}.openai.azure.com. YOUR_RESOURCE_NAME is the name of your resource that you have created on Azure.
 	// Required for Azure
@@ -145,6 +151,10 @@ type Config struct {
 	// ExtraFields will override any existing fields with the same key.
 	// Optional. Useful for experimental features not yet officially supported.
 	ExtraFields map[string]any `json:"-"`
+
+	// ReasoningEffort will override the default reasoning level of "medium"
+	// Optional. Useful for fine tuning response latency vs. accuracy
+	ReasoningEffort ReasoningEffortLevel
 }
 
 type Client struct {
@@ -167,6 +177,9 @@ func NewClient(ctx context.Context, config *Config) (*Client, error) {
 		clientConf = openai.DefaultAzureConfig(config.APIKey, config.BaseURL)
 		if config.APIVersion != "" {
 			clientConf.APIVersion = config.APIVersion
+		}
+		if config.AzureModelMapperFunc != nil {
+			clientConf.AzureModelMapperFunc = config.AzureModelMapperFunc
 		}
 	} else {
 		clientConf = openai.DefaultConfig(config.APIKey)
@@ -325,9 +338,9 @@ func (c *Client) genRequest(in []*schema.Message, opts ...model.Option) (*openai
 		Tools:       nil,
 		ToolChoice:  c.toolChoice,
 	}, opts...)
-
 	openaiOptions := model.GetImplSpecificOptions(&openaiOptions{
-		ExtraFields: c.config.ExtraFields,
+		ExtraFields:     c.config.ExtraFields,
+		ReasoningEffort: c.config.ReasoningEffort,
 	}, opts...)
 
 	req := &openai.ChatCompletionRequest{
@@ -343,6 +356,7 @@ func (c *Client) genRequest(in []*schema.Message, opts ...model.Option) (*openai
 		User:             dereferenceOrZero(c.config.User),
 		LogProbs:         c.config.LogProbs,
 		TopLogProbs:      c.config.TopLogProbs,
+		ReasoningEffort:  string(openaiOptions.ReasoningEffort),
 	}
 
 	if len(openaiOptions.ExtraFields) > 0 {
