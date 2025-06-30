@@ -9,7 +9,8 @@ import (
 	"github.com/cloudwego/eino/callbacks"
 	"github.com/cloudwego/eino/components"
 	"github.com/cloudwego/eino/components/embedding"
-	"github.com/cloudwego/eino/components/reranker"
+
+	"github.com/cloudwego/eino-ext/components/reranker"
 	"github.com/cloudwego/eino/components/retriever"
 	"github.com/cloudwego/eino/schema"
 	"github.com/philippgille/chromem-go"
