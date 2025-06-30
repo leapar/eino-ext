@@ -91,7 +91,6 @@ func (h *headerSplitter) Transform(ctx context.Context, docs []*schema.Document,
 				Content:  result[i].chunk,
 				MetaData: deepCopyAnyMap(doc.MetaData),
 			}
-			//fmt.Println(i, "__ Content == ", result[i].chunk)
 			if nDoc.MetaData == nil {
 				nDoc.MetaData = make(map[string]any, len(result[i].meta))
 			}
