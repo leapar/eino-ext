@@ -24,11 +24,12 @@ import (
 	"net/http"
 	"runtime/debug"
 
+	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/meguminnnnnnnnn/go-openai"
+
 	"github.com/cloudwego/eino/callbacks"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
-	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/meguminnnnnnnnn/go-openai"
 )
 
 type ChatCompletionResponseFormatType string
@@ -73,7 +74,6 @@ type Config struct {
 	// ByAzure indicates whether to use Azure OpenAI Service
 	// Required for Azure
 	ByAzure bool `json:"by_azure"`
-
 
 	// AzureModelMapperFunc is used to map the model name to the deployment name for Azure OpenAI Service.
 	// This is useful when the model name is different from the deployment name.
@@ -338,7 +338,7 @@ func (c *Client) genRequest(in []*schema.Message, opts ...model.Option) (*openai
 		Tools:       nil,
 		ToolChoice:  c.toolChoice,
 	}, opts...)
-	openaiOptions := model.GetImplSpecificOptions(&openaiOptions{
+	specOptions := model.GetImplSpecificOptions(&openaiOptions{
 		ExtraFields:     c.config.ExtraFields,
 		ReasoningEffort: c.config.ReasoningEffort,
 	}, opts...)
@@ -356,11 +356,11 @@ func (c *Client) genRequest(in []*schema.Message, opts ...model.Option) (*openai
 		User:             dereferenceOrZero(c.config.User),
 		LogProbs:         c.config.LogProbs,
 		TopLogProbs:      c.config.TopLogProbs,
-		ReasoningEffort:  string(openaiOptions.ReasoningEffort),
+		ReasoningEffort:  string(specOptions.ReasoningEffort),
 	}
 
-	if len(openaiOptions.ExtraFields) > 0 {
-		req.SetExtraFields(openaiOptions.ExtraFields)
+	if len(specOptions.ExtraFields) > 0 {
+		req.SetExtraFields(specOptions.ExtraFields)
 	}
 
 	cbInput := &model.CallbackInput{
@@ -489,7 +489,9 @@ func (c *Client) Generate(ctx context.Context, in []*schema.Message, opts ...mod
 		}
 	}()
 
-	resp, err := c.cli.CreateChatCompletion(ctx, *req)
+	reqOpts := c.getChatCompletionRequestOptions(opts)
+
+	resp, err := c.cli.CreateChatCompletion(ctx, *req, reqOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create chat completion: %w", err)
 	}
@@ -561,7 +563,9 @@ func (c *Client) Stream(ctx context.Context, in []*schema.Message,
 
 	ctx = callbacks.OnStart(ctx, cbInput)
 
-	stream, err := c.cli.CreateChatCompletionStream(ctx, *req)
+	reqOpts := c.getChatCompletionRequestOptions(opts)
+
+	stream, err := c.cli.CreateChatCompletionStream(ctx, *req, reqOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -658,6 +662,25 @@ func (c *Client) Stream(ctx context.Context, in []*schema.Message,
 	)
 
 	return outStream, nil
+}
+
+func (c *Client) getChatCompletionRequestOptions(opts []model.Option) []openai.ChatCompletionRequestOption {
+	specOptions := model.GetImplSpecificOptions(&openaiOptions{
+		ExtraFields:     c.config.ExtraFields,
+		ReasoningEffort: c.config.ReasoningEffort,
+	}, opts...)
+
+	var options []openai.ChatCompletionRequestOption
+
+	if specOptions.RequestBodyModifier != nil {
+		options = append(options, openai.WithRequestBodyModifier(specOptions.RequestBodyModifier))
+	}
+
+	if specOptions.ExtraHeader != nil {
+		options = append(options, openai.WithExtraHeader(specOptions.ExtraHeader))
+	}
+
+	return options
 }
 
 func toStreamProbs(probs *openai.ChatCompletionStreamChoiceLogprobs) *schema.LogProbs {

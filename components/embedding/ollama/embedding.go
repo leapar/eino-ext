@@ -23,31 +23,55 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/cloudwego/eino/callbacks"
+	"github.com/cloudwego/eino/components"
 	"github.com/cloudwego/eino/components/embedding"
 	"github.com/ollama/ollama/api"
 )
 
 var (
-	defaultBaseURL = "http://localhost:11434"
-	defaultTimeout = 10 * time.Minute
+	defaultBaseUrl = "http://localhost:11434"
+)
+
+const (
+	TotalDuration   = "total_duration" // in milliseconds
+	LoadDuration    = "load_duration"  // in milliseconds
+	PromptEvalCount = "prompt_eval_count"
 )
 
 type EmbeddingConfig struct {
 	// Timeout specifies the maximum duration to wait for API responses
 	// If HTTPClient is set, Timeout will not be used.
 	// Optional. Default: no timeout
-	Timeout *time.Duration `json:"timeout"`
+	Timeout time.Duration `json:"timeout"`
 
 	// HTTPClient specifies the client to send HTTP requests.
 	// If HTTPClient is set, Timeout will not be used.
 	// Optional. Default &http.Client{Timeout: Timeout}
 	HTTPClient *http.Client `json:"http_client"`
 
+	// BaseURL specifies the Ollama service endpoint URL
+	// Format: http(s)://host:port
+	// Optional. Default: "http://localhost:11434"
 	BaseURL string `json:"base_url"`
 
 	// Model specifies the ID of the model to use for embedding generation
 	// Required
 	Model string `json:"model"`
+
+	// Truncate specifies whether to truncate text to model's maximum context length
+	// When set to true, if text to embed exceeds the model's maximum context length,
+	// a call to EmbedStrings will return an error
+	// Optional.
+	Truncate *bool `json:"truncate,omitempty"`
+
+	// KeepAlive controls how long the model will stay loaded in memory following this request.
+	// Optional. Default 5 minutes
+	KeepAlive *time.Duration `json:"keep_alive,omitempty"`
+
+	// Options lists model-specific options.
+	// Optional
+	Options map[string]any `json:"options,omitempty"`
 }
 
 var _ embedding.Embedder = (*Embedder)(nil)
@@ -58,33 +82,26 @@ type Embedder struct {
 }
 
 func NewEmbedder(ctx context.Context, config *EmbeddingConfig) (*Embedder, error) {
-	var httpClient *http.Client
+	if config == nil {
+		return nil, fmt.Errorf("embedding config must not be nil")
+	}
 
 	if len(config.BaseURL) == 0 {
-		config.BaseURL = defaultBaseURL
+		config.BaseURL = defaultBaseUrl
 	}
 
-	if config.Timeout == nil {
-		config.Timeout = &defaultTimeout
-	}
-
-	if len(config.Model) == 0 {
-		config.Model = "nomic-embed-text:latest"
-	}
-
+	var httpClient *http.Client
 	if config.HTTPClient != nil {
 		httpClient = config.HTTPClient
 	} else {
-		httpClient = &http.Client{Timeout: *config.Timeout}
+		httpClient = &http.Client{Timeout: config.Timeout}
 	}
 
 	baseURL, err := url.Parse(config.BaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid base URL: %w", err)
 	}
-
 	cli := api.NewClient(baseURL, httpClient)
-
 	return &Embedder{
 		cli:  cli,
 		conf: config,
@@ -93,25 +110,63 @@ func NewEmbedder(ctx context.Context, config *EmbeddingConfig) (*Embedder, error
 
 func (e *Embedder) EmbedStrings(ctx context.Context, texts []string, opts ...embedding.Option) (
 	embeddings [][]float64, err error) {
+	defer func() {
+		if err != nil {
+			callbacks.OnError(ctx, err)
+		}
+	}()
+
 	req := &api.EmbedRequest{
-		Model: e.conf.Model,
-		Input: texts,
+		Model:    e.conf.Model,
+		Input:    texts,
+		Truncate: e.conf.Truncate,
+		Options:  e.conf.Options,
 	}
+	if e.conf.KeepAlive != nil {
+		req.KeepAlive = &api.Duration{Duration: *e.conf.KeepAlive}
+	}
+
+	options := embedding.GetCommonOptions(&embedding.Options{
+		Model: &e.conf.Model,
+	}, opts...)
+
+	conf := &embedding.Config{
+		Model: *options.Model,
+	}
+
+	ctx = callbacks.EnsureRunInfo(ctx, e.GetType(), components.ComponentOfEmbedding)
+	ctx = callbacks.OnStart(ctx, &embedding.CallbackInput{
+		Texts:  texts,
+		Config: conf,
+	})
+
 	resp, err := e.cli.Embed(ctx, req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("[Ollama] EmbedStrings error: %v", err)
 	}
 
-	embeddings = make([][]float64, len(resp.Embeddings))
-	for i, embedding := range resp.Embeddings {
-		res := make([]float64, len(embedding))
-		for j, emb := range embedding {
-			res[j] = float64(emb)
+	// Convert [][]float32 to [][]float64
+	result := make([][]float64, len(resp.Embeddings))
+	for i, emb := range resp.Embeddings {
+		result[i] = make([]float64, len(emb))
+		for j, v := range emb {
+			result[i][j] = float64(v)
 		}
-		embeddings[i] = res
 	}
 
-	return embeddings, nil
+	extra := map[string]any{
+		TotalDuration:   resp.TotalDuration,
+		LoadDuration:    resp.LoadDuration,
+		PromptEvalCount: resp.PromptEvalCount,
+	}
+
+	callbacks.OnEnd(ctx, &embedding.CallbackOutput{
+		Embeddings: result,
+		Config:     conf,
+		Extra:      extra,
+	})
+
+	return result, nil
 }
 
 const typ = "Ollama"
