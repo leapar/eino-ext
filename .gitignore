@@ -34,3 +34,4 @@ output/*
 
 # Vscode files
 .vscode
+components/embedding/bailian/test/security.const.go
