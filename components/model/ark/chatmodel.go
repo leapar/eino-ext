@@ -138,6 +138,9 @@ type ChatModelConfig struct {
 	// It is set to be enabled by default.
 	Thinking *model.Thinking `json:"thinking,omitempty"`
 
+	// ServiceTier specifies whether to use the TPM guarantee package. The effective target has purchased the inference access point for the guarantee package.
+	ServiceTier *string `json:"service_tier"`
+
 	Cache *CacheConfig `json:"cache,omitempty"`
 }
 
@@ -171,7 +174,7 @@ type APIType string
 const (
 	// To learn more about ContextAPI, see https://www.volcengine.com/docs/82379/1528789
 	ContextAPI APIType = "context_api"
-	// To learn more about ResponsesAPI, see Thttps://www.volcengine.com/docs/82379/1569618
+	// To learn more about ResponsesAPI, see https://www.volcengine.com/docs/82379/1569618
 	ResponsesAPI APIType = "responses_api"
 )
 
@@ -256,6 +259,7 @@ func buildChatCompletionAPIChatModel(config *ChatModelConfig) *completionAPIChat
 		responseFormat:   config.ResponseFormat,
 		thinking:         config.Thinking,
 		cache:            config.Cache,
+		serviceTier:      config.ServiceTier,
 	}
 
 	return cm
@@ -304,6 +308,7 @@ func buildResponsesAPIChatModel(config *ChatModelConfig) (*responsesAPIChatModel
 		responseFormat: config.ResponseFormat,
 		thinking:       config.Thinking,
 		cache:          config.Cache,
+		serviceTier:    config.ServiceTier,
 	}
 
 	return cm, nil
@@ -570,7 +575,10 @@ func (cm *ChatModel) createContextByContextAPI(ctx context.Context, prefix []*sc
 	return &CacheInfo{
 		ContextID: resp.ID,
 		Usage: schema.TokenUsage{
-			PromptTokens:     resp.Usage.PromptTokens,
+			PromptTokens: resp.Usage.PromptTokens,
+			PromptTokenDetails: schema.PromptTokenDetails{
+				CachedTokens: resp.Usage.PromptTokensDetails.CachedTokens,
+			},
 			CompletionTokens: resp.Usage.CompletionTokens,
 			TotalTokens:      resp.Usage.TotalTokens,
 		},
